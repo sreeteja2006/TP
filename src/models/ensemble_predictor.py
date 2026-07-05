@@ -2,83 +2,26 @@ import pandas as pd
 import numpy as np
 from typing import Dict, List, Tuple, Optional
 import logging
-from datetime import datetime, timedelta
 import warnings
 warnings.filterwarnings('ignore')
 
-try:
-    from prophet import Prophet
-    PROPHET_AVAILABLE = True
-except ImportError:
-    PROPHET_AVAILABLE = False
-
-try:
-    from statsmodels.tsa.arima.model import ARIMA
-    STATSMODELS_AVAILABLE = True
-except ImportError:
-    STATSMODELS_AVAILABLE = False
-
-try:
-    import tensorflow as tf
-    from tensorflow.keras.models import Sequential
-    from tensorflow.keras.layers import LSTM, Dense, Dropout
-    from sklearn.preprocessing import MinMaxScaler
-    TENSORFLOW_AVAILABLE = True
-except ImportError:
-    TENSORFLOW_AVAILABLE = False
-
-try:
-    from sklearn.ensemble import RandomForestRegressor
-    from sklearn.preprocessing import StandardScaler
-    SKLEARN_AVAILABLE = True
-except ImportError:
-    SKLEARN_AVAILABLE = False
+from statsmodels.tsa.arima.model import ARIMA
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.preprocessing import StandardScaler
 
 logger = logging.getLogger(__name__)
 
 
-class ProphetModel:
-    def __init__(self):
-        self.model = None
-        self.is_trained = False
-
-    def train(self, data: pd.DataFrame, target_column: str = 'Close') -> bool:
-        if not PROPHET_AVAILABLE:
-            return False
-        try:
-            prophet_data = pd.DataFrame({'ds': data.index, 'y': data[target_column]})
-            self.model = Prophet(daily_seasonality=True, weekly_seasonality=True, yearly_seasonality=True, changepoint_prior_scale=0.05)
-            self.model.fit(prophet_data)
-            self.is_trained = True
-            return True
-        except Exception as e:
-            logger.error(f'ProphetModel.train: {e}')
-            return False
-
-    def predict(self, steps: int) -> Optional[pd.DataFrame]:
-        if not self.is_trained:
-            return None
-        try:
-            future = self.model.make_future_dataframe(periods=steps)
-            forecast = self.model.predict(future)
-            return forecast[['ds', 'yhat', 'yhat_lower', 'yhat_upper']].tail(steps)
-        except Exception as e:
-            logger.error(f'ProphetModel.predict: {e}')
-            return None
-
-
 class ARIMAModel:
-    def __init__(self, order: Tuple[int, int, int] = (1, 1, 1)):
+    def __init__(self, order: Tuple[int, int, int] = (5, 1, 0)):
         self.order = order
         self.fitted_model = None
         self.is_trained = False
 
     def train(self, data: pd.DataFrame, target_column: str = 'Close') -> bool:
-        if not STATSMODELS_AVAILABLE:
-            return False
         try:
-            ts_data = data[target_column].dropna()
-            self.fitted_model = ARIMA(ts_data, order=self.order).fit()
+            ts = data[target_column].dropna()
+            self.fitted_model = ARIMA(ts, order=self.order).fit()
             self.is_trained = True
             return True
         except Exception as e:
@@ -89,73 +32,11 @@ class ARIMAModel:
         if not self.is_trained:
             return None
         try:
-            forecast = self.fitted_model.forecast(steps=steps)
-            return forecast.values if hasattr(forecast, 'values') else forecast
+            fc = self.fitted_model.forecast(steps=steps)
+            return fc.values if hasattr(fc, 'values') else fc
         except Exception as e:
             logger.error(f'ARIMAModel.predict: {e}')
             return None
-
-
-class LSTMModel:
-    def __init__(self, sequence_length: int = 60, units: int = 50):
-        self.sequence_length = sequence_length
-        self.units = units
-        self.model = None
-        self.scaler = None
-        self.is_trained = False
-
-    def train(self, data: pd.DataFrame, target_column: str = 'Close', epochs: int = 50) -> bool:
-        if not TENSORFLOW_AVAILABLE:
-            return False
-        try:
-            prices = data[target_column].values.reshape(-1, 1)
-            self.scaler = MinMaxScaler()
-            scaled = self.scaler.fit_transform(prices)
-            X, y = self._create_sequences(scaled)
-            if len(X) == 0:
-                return False
-            self.model = Sequential([
-                LSTM(self.units, return_sequences=True, input_shape=(X.shape[1], 1)),
-                Dropout(0.2),
-                LSTM(self.units, return_sequences=False),
-                Dropout(0.2),
-                Dense(25),
-                Dense(1)
-            ])
-            self.model.compile(optimizer='adam', loss='mean_squared_error')
-            self.model.fit(X, y, batch_size=32, epochs=epochs, verbose=0)
-            self.is_trained = True
-            return True
-        except Exception as e:
-            logger.error(f'LSTMModel.train: {e}')
-            return False
-
-    def predict(self, data: pd.DataFrame, target_column: str = 'Close', steps: int = 1) -> Optional[np.ndarray]:
-        if not self.is_trained:
-            return None
-        try:
-            recent = data[target_column].tail(self.sequence_length).values.reshape(-1, 1)
-            scaled = self.scaler.transform(recent)
-            predictions = []
-            seq = scaled.copy()
-            for _ in range(steps):
-                X = seq.reshape(1, self.sequence_length, 1)
-                pred_scaled = self.model.predict(X, verbose=0)
-                pred = self.scaler.inverse_transform(pred_scaled)[0, 0]
-                predictions.append(pred)
-                seq = np.roll(seq, -1)
-                seq[-1] = pred_scaled
-            return np.array(predictions)
-        except Exception as e:
-            logger.error(f'LSTMModel.predict: {e}')
-            return None
-
-    def _create_sequences(self, data: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
-        X, y = [], []
-        for i in range(self.sequence_length, len(data)):
-            X.append(data[i - self.sequence_length:i, 0])
-            y.append(data[i, 0])
-        return np.array(X), np.array(y)
 
 
 class RandomForestModel:
@@ -167,11 +48,9 @@ class RandomForestModel:
         self.is_trained = False
 
     def train(self, data: pd.DataFrame, target_column: str = 'Close') -> bool:
-        if not SKLEARN_AVAILABLE:
-            return False
         try:
             features_df = self._create_features(data).dropna()
-            if len(features_df) == 0:
+            if len(features_df) < 30:
                 return False
             X = features_df.drop(columns=[target_column])
             y = features_df[target_column]
@@ -219,12 +98,10 @@ class RandomForestModel:
 class EnsemblePredictor:
     def __init__(self):
         self.models = {
-            'prophet': ProphetModel(),
             'arima': ARIMAModel(),
-            'lstm': LSTMModel(),
             'random_forest': RandomForestModel()
         }
-        self.weights = {'prophet': 0.3, 'arima': 0.2, 'lstm': 0.3, 'random_forest': 0.2}
+        self.weights = {'arima': 0.4, 'random_forest': 0.6}
         self.trained_models = []
 
     def train_all_models(self, data: pd.DataFrame, target_column: str = 'Close') -> Dict[str, bool]:
@@ -244,22 +121,14 @@ class EnsemblePredictor:
         for name in self.trained_models:
             model = self.models[name]
             try:
-                if name == 'prophet':
-                    pred_df = model.predict(steps)
-                    if pred_df is not None:
-                        predictions[name] = pred_df['yhat'].values
-                elif name == 'arima':
+                if name == 'arima':
                     pred = model.predict(steps)
-                    if pred is not None:
-                        predictions[name] = pred
-                elif name == 'lstm':
-                    pred = model.predict(data, target_column, steps)
-                    if pred is not None:
-                        predictions[name] = pred
                 elif name == 'random_forest':
                     pred = model.predict(data, steps)
-                    if pred is not None:
-                        predictions[name] = pred
+                else:
+                    pred = None
+                if pred is not None:
+                    predictions[name] = pred
             except Exception as e:
                 logger.error(f'predict_ensemble [{name}]: {e}')
 

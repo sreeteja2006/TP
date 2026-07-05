@@ -80,37 +80,23 @@ I used:
 
 ## 🧠 Machine Learning Models & Trading Strategies
 
-TradePro uses several machine learning models to predict market movements and generate trading signals:
+TradePro uses two machine learning models to predict market movements and generate trading signals:
 
-### Prophet Model
-- **What it is**: A forecasting model created by Facebook that's good at finding patterns in time series data
-- **How it works**: It breaks down price data into trend, seasonal patterns, and holiday effects
-- **Why it's useful**: It handles missing data well and can spot non-linear trends in stock prices
-- **What we adjust**: How sensitive it is to trend changes and how it handles seasonal patterns
+### ARIMA Model (weight: 40%)
+- **What it is**: A statistical time-series model — AutoRegressive Integrated Moving Average
+- **How it works**: Uses the last 5 days of prices (AR=5), takes one difference to remove trend (I=1), and corrects for past forecast errors (MA=0)
+- **Why it's useful**: Fast to train, good at capturing short-term price momentum
+- **Order used**: ARIMA(5, 1, 0)
 
-### ARIMA Model
-- **What it is**: A statistical model that uses past values and errors to predict future prices
-- **How it works**: It combines three components - past values (AR), difference between values (I), and moving averages of errors (MA)
-- **Why it's useful**: It's good at capturing short-term patterns in stock prices
-- **What we adjust**: How many past values to use and how many differences to take
+### Random Forest (weight: 60%)
+- **What it is**: An ensemble of 100 decision trees voting on the next price
+- **How it works**: Trained on 10 engineered features — 1/3/5-day price changes, 5/10/20-day SMAs, 5/10-day volatility, volume change, volume SMA
+- **Why it's useful**: Captures non-linear relationships between technical features and future price
+- **Trees used**: 100 estimators, random_state=42
 
-### LSTM Neural Networks
-- **What it is**: A special type of neural network that's good at learning patterns in sequence data
-- **How it works**: It has "memory cells" that can remember important information and forget irrelevant details
-- **Why it's useful**: It can spot complex patterns in stock prices that simpler models might miss
-- **What we adjust**: How many layers to use, how many neurons per layer, and how much data to feed it
-
-### Random Forest
-- **What it is**: A model that uses many decision trees to make better predictions
-- **How it works**: It creates many different decision trees and lets them vote on the best prediction
-- **Why it's useful**: It's less likely to overfit and can handle many different types of data
-- **What we adjust**: How many trees to use and how deep each tree can grow
-
-### Ensemble Model
-- **What it is**: A combination of multiple models to get better predictions
-- **How it works**: It takes predictions from all the models above and combines them intelligently
-- **Why it's useful**: It usually performs better than any single model alone
-- **What we adjust**: How much weight to give each model's prediction
+### Ensemble Output
+- Final prediction = 40% × ARIMA + 60% × Random Forest
+- Results are cached per symbol for 1 hour to avoid retraining on every request
 
 ### Feature Engineering
 - **What it does**: Creates useful inputs for our models from raw price data
