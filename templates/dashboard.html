@@ -6,26 +6,28 @@
 <div class="row">
     <div class="col-12">
         <h1>Trading Dashboard</h1>
-        <div class="d-flex justify-content-between mb-3">
-            <div>
-                <select id="stockSymbol" class="form-select">
+        <div class="d-flex justify-content-between align-items-center mb-3 gap-2 flex-wrap">
+            <div class="d-flex gap-2 align-items-center">
+                <select id="stockSymbol" class="form-select" style="min-width:200px">
                     {% for symbol in symbols %}
-                    <option value="{{ symbol.symbol }}" {% if symbol.symbol==selected_symbol %}selected{% endif %}>{{
-                        symbol.name }}</option>
+                    <option value="{{ symbol.symbol }}" {% if symbol.symbol==selected_symbol %}selected{% endif %}>
+                        {{ symbol.name }} ({{ symbol.symbol }})
+                    </option>
                     {% endfor %}
                 </select>
-            </div>
-            <div>
-                <select id="timeframe" class="form-select">
+                <select id="timeframe" class="form-select" style="min-width:120px">
                     <option value="1mo">1 Month</option>
                     <option value="3mo">3 Months</option>
-                    <option value="6mo">6 Months</option>
+                    <option value="6mo" selected>6 Months</option>
                     <option value="1y">1 Year</option>
                 </select>
             </div>
-            <div>
+            <div class="d-flex gap-2">
                 <button id="refreshData" class="btn btn-primary">
                     <i class="bi bi-arrow-clockwise"></i> Refresh
+                </button>
+                <button id="runPredict" class="btn btn-warning">
+                    <i class="bi bi-graph-up-arrow"></i> Run Prediction
                 </button>
             </div>
         </div>
@@ -34,69 +36,134 @@
 
 <div class="row mb-4">
     <div class="col-md-3">
-        <div class="card">
+        <div class="card h-100">
             <div class="card-body">
-                <h5 class="card-title">Current Price</h5>
-                <h2 id="currentPrice" class="card-text">₹0.00</h2>
-                <p id="priceChange" class="card-text">
-                    <span class="badge bg-success">+0.00%</span>
+                <h6 class="card-title text-muted">Current Price</h6>
+                <h2 id="currentPrice" class="card-text mb-0">—</h2>
+                <p id="priceChange" class="card-text mt-1">
+                    <span class="badge bg-secondary">loading...</span>
                 </p>
             </div>
         </div>
     </div>
     <div class="col-md-3">
+        <div class="card h-100">
+            <div class="card-body">
+                <h6 class="card-title text-muted">RSI (14)</h6>
+                <h2 id="rsiValue" class="card-text mb-0">—</h2>
+                <p id="rsiStatus" class="card-text mt-1">
+                    <span class="badge bg-secondary">loading...</span>
+                </p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card h-100">
+            <div class="card-body">
+                <h6 class="card-title text-muted">Moving Averages</h6>
+                <p class="mb-1">SMA 20: <strong id="sma20">—</strong></p>
+                <p class="mb-1">SMA 50: <strong id="sma50">—</strong></p>
+                <p id="trendStatus" class="mb-0 mt-1">
+                    <span class="badge bg-secondary">loading...</span>
+                </p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card h-100">
+            <div class="card-body">
+                <h6 class="card-title text-muted">Volume</h6>
+                <h2 id="volume" class="card-text mb-0">—</h2>
+                <p class="card-text mt-1"><small class="text-muted">Latest day</small></p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <h5 class="card-title mb-0">Price Chart</h5>
+                    <div id="chartLegend" class="small text-muted"></div>
+                </div>
+                <div id="priceChart" style="height: 420px;"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row mb-4" id="predictionPanel" style="display:none">
+    <div class="col-12">
+        <div class="card border-warning">
+            <div class="card-header bg-warning d-flex justify-content-between align-items-center">
+                <h5 class="mb-0"><i class="bi bi-robot"></i> ML Price Forecast — Next 5 Trading Days</h5>
+                <span id="predCachedAt" class="small text-muted"></span>
+            </div>
+            <div class="card-body">
+                <div class="row mb-3">
+                    <div class="col-md-4">
+                        <div class="card bg-light">
+                            <div class="card-body text-center">
+                                <h6 class="text-muted">Last Actual Price</h6>
+                                <h3 id="predLastPrice" class="mb-0">—</h3>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="card bg-light">
+                            <div class="card-body text-center">
+                                <h6 class="text-muted">5-Day Forecast</h6>
+                                <h3 id="predFinalPrice" class="mb-0">—</h3>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="card bg-light">
+                            <div class="card-body text-center">
+                                <h6 class="text-muted">Expected Move</h6>
+                                <h3 id="predMove" class="mb-0">—</h3>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="alert alert-secondary d-flex align-items-center gap-2 mb-3">
+                    <i class="bi bi-info-circle"></i>
+                    <span id="predModelsUsed">Models: ARIMA (40%) + Random Forest (60%)</span>
+                </div>
+
+                <div class="table-responsive">
+                    <table class="table table-sm table-bordered" id="predTable">
+                        <thead class="table-dark">
+                            <tr>
+                                <th>Date</th>
+                                <th>ARIMA</th>
+                                <th>Random Forest</th>
+                                <th class="table-warning">Ensemble (Forecast)</th>
+                                <th>vs Today</th>
+                            </tr>
+                        </thead>
+                        <tbody id="predTableBody"></tbody>
+                    </table>
+                </div>
+
+                <p class="text-muted small mb-0">
+                    <i class="bi bi-exclamation-triangle"></i>
+                    Predictions are based on historical price patterns only. Not financial advice. Results are cached for 1 hour.
+                </p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row mb-4">
+    <div class="col-12">
         <div class="card">
             <div class="card-body">
                 <h5 class="card-title">Volume</h5>
-                <h2 id="volume" class="card-text">0</h2>
-                <p class="card-text">
-                    <small>Today's trading volume</small>
-                </p>
-            </div>
-        </div>
-    </div>
-    <div class="col-md-3">
-        <div class="card">
-            <div class="card-body">
-                <h5 class="card-title">RSI (14)</h5>
-                <h2 id="rsi" class="card-text">0.00</h2>
-                <p id="rsiStatus" class="card-text">
-                    <span class="badge bg-secondary">Neutral</span>
-                </p>
-            </div>
-        </div>
-    </div>
-    <div class="col-md-3">
-        <div class="card">
-            <div class="card-body">
-                <h5 class="card-title">Moving Averages</h5>
-                <p class="card-text">SMA 20: <span id="sma20">₹0.00</span></p>
-                <p class="card-text">SMA 50: <span id="sma50">₹0.00</span></p>
-                <p id="trendStatus" class="card-text">
-                    <span class="badge bg-secondary">Neutral</span>
-                </p>
-            </div>
-        </div>
-    </div>
-</div>
-
-<div class="row mb-4">
-    <div class="col-12">
-        <div class="card">
-            <div class="card-body">
-                <h5 class="card-title">Price Chart</h5>
-                <div id="priceChart" style="height: 400px;"></div>
-            </div>
-        </div>
-    </div>
-</div>
-
-<div class="row mb-4">
-    <div class="col-12">
-        <div class="card">
-            <div class="card-body">
-                <h5 class="card-title">Volume Chart</h5>
-                <div id="volumeChart" style="height: 200px;"></div>
+                <div id="volumeChart" style="height: 180px;"></div>
             </div>
         </div>
     </div>
@@ -106,9 +173,9 @@
     <div class="col-12">
         <div class="card">
             <div class="card-body">
-                <h5 class="card-title">Recent Data</h5>
+                <h5 class="card-title">Recent OHLCV Data</h5>
                 <div class="table-responsive">
-                    <table class="table table-striped" id="recentData">
+                    <table class="table table-striped table-sm" id="recentData">
                         <thead>
                             <tr>
                                 <th>Date</th>
@@ -119,9 +186,7 @@
                                 <th>Volume</th>
                             </tr>
                         </thead>
-                        <tbody>
-                            <!-- Data will be populated by JavaScript -->
-                        </tbody>
+                        <tbody></tbody>
                     </table>
                 </div>
             </div>
@@ -132,157 +197,274 @@
 
 {% block extra_js %}
 <script>
-    $(document).ready(function () {
-        // Load initial data for the selected symbol
-        const selectedSymbol = $('#stockSymbol').val();
-        loadStockData(selectedSymbol);
+    let _lastStockData = null;
+    let _predData = null;
 
-        // Event handlers
+    $(document).ready(function () {
+        loadStockData($('#stockSymbol').val());
+
         $('#stockSymbol').change(function () {
+            _predData = null;
+            $('#predictionPanel').hide();
             loadStockData($(this).val());
-            // Update URL to reflect selected symbol
-            const newUrl = updateUrlParameter(window.location.href, 'symbol', $(this).val());
-            history.pushState(null, '', newUrl);
+            history.pushState(null, '', updateUrlParam(window.location.href, 'symbol', $(this).val()));
+        });
+
+        $('#timeframe').change(function () {
+            loadStockData($('#stockSymbol').val());
         });
 
         $('#refreshData').click(function () {
+            _predData = null;
+            $('#predictionPanel').hide();
             loadStockData($('#stockSymbol').val());
+        });
+
+        $('#runPredict').click(function () {
+            const sym = $('#stockSymbol').val();
+            if (!sym) return;
+            runPrediction(sym);
         });
     });
 
     function loadStockData(symbol) {
-        console.log('Loading data for symbol:', symbol);
-        
-        // Show loading indicator
-        $('#currentPrice').text('Loading...');
-        $('#volume').text('Loading...');
-        
+        $('#currentPrice').text('loading...');
+        $('#volume').text('loading...');
+
         $.ajax({
             url: '/api/stock_data/' + encodeURIComponent(symbol),
             method: 'GET',
             success: function (data) {
-                console.log('Received data:', data);
+                _lastStockData = data;
                 updateDashboard(data);
+                if (_predData) {
+                    overlayPrediction(_predData);
+                }
             },
-            error: function (xhr, status, error) {
-                console.error('Error loading stock data:', xhr.responseText);
-                const errorData = xhr.responseJSON || { error: 'Failed to load data' };
-                updateDashboard(errorData);
+            error: function (xhr) {
+                const err = (xhr.responseJSON || {}).error || 'Failed to load data';
+                $('#priceChart').html(`<div class="alert alert-danger m-3"><i class="bi bi-exclamation-triangle"></i> ${err}</div>`);
+                $('#currentPrice').text('Error');
             }
         });
     }
 
-    function updateUrlParameter(url, key, value) {
-        // Remove any hash part
-        const hashParts = url.split('#');
-        let urlWithoutHash = hashParts[0];
-        const hash = hashParts.length > 1 ? '#' + hashParts[1] : '';
+    function runPrediction(symbol) {
+        const btn = $('#runPredict');
+        btn.html('<span class="spinner-border spinner-border-sm"></span> Running...').prop('disabled', true);
 
-        // Check if the URL already has query parameters
-        const existingParams = urlWithoutHash.split('?');
-        let baseUrl = existingParams[0];
-        let params = existingParams.length > 1 ? existingParams[1].split('&') : [];
-
-        // Update or add the new parameter
-        let paramFound = false;
-        for (let i = 0; i < params.length; i++) {
-            const param = params[i].split('=');
-            if (param[0] === key) {
-                params[i] = key + '=' + value;
-                paramFound = true;
-                break;
+        $.ajax({
+            url: '/api/predict/' + encodeURIComponent(symbol),
+            method: 'GET',
+            success: function (data) {
+                if (data.error) {
+                    alert('Prediction error: ' + data.error);
+                    return;
+                }
+                _predData = data;
+                showPredictionPanel(data);
+                overlayPrediction(data);
+            },
+            error: function (xhr) {
+                const msg = (xhr.responseJSON || {}).error || 'Prediction failed';
+                alert('Error: ' + msg);
+            },
+            complete: function () {
+                btn.html('<i class="bi bi-graph-up-arrow"></i> Run Prediction').prop('disabled', false);
             }
-        }
-
-        if (!paramFound) {
-            params.push(key + '=' + value);
-        }
-
-        // Reconstruct the URL
-        return baseUrl + (params.length > 0 ? '?' + params.join('&') : '') + hash;
+        });
     }
 
     function updateDashboard(data) {
-        // Check if there's an error in the data
         if (data.error) {
-            // Show error in the dashboard instead of alert
+            $('#priceChart').html(`<div class="alert alert-danger m-3">${data.error}</div>`);
             $('#currentPrice').text('Error');
-            $('#volume').text('N/A');
-            $('#priceChange').html('<span class="badge bg-danger">Error</span>');
-            $('#priceChart').html(`<div class="alert alert-danger"><i class="bi bi-exclamation-triangle"></i> ${data.error}</div>`);
-            $('#volumeChart').html(`<div class="alert alert-warning"><i class="bi bi-info-circle"></i> Unable to load volume data</div>`);
-            $('#recentData tbody').html('<tr><td colspan="6" class="text-center text-muted">No data available</td></tr>');
-            console.error('Dashboard error:', data.error);
             return;
         }
 
-        try {
-            // Update metrics
-            $('#currentPrice').text('$' + data.current_price.toFixed(2));
-            $('#volume').text(data.volume[data.volume.length - 1].toLocaleString());
+        $('#currentPrice').text('₹' + data.current_price.toFixed(2));
+        $('#volume').text((data.volume[data.volume.length - 1] || 0).toLocaleString('en-IN'));
 
-            // Update price change
-            const changeClass = data.change >= 0 ? 'bg-success' : 'bg-danger';
-            const changeSign = data.change >= 0 ? '+' : '';
-            $('#priceChange').html(`<span class="badge ${changeClass}">${changeSign}${data.change.toFixed(2)} (${changeSign}${data.change_pct.toFixed(2)}%)</span>`);
+        const chgCls = data.change >= 0 ? 'bg-success' : 'bg-danger';
+        const chgSign = data.change >= 0 ? '+' : '';
+        $('#priceChange').html(`<span class="badge ${chgCls}">${chgSign}₹${data.change.toFixed(2)} (${chgSign}${data.change_pct.toFixed(2)}%)</span>`);
 
-            const trace = {
-                x: data.dates,
-                close: data.close,
-                high: data.high,
-                low: data.low,
-                open: data.open,
-                type: 'candlestick',
-                name: $('#stockSymbol option:selected').text()
-            };
+        const lastRsi = data.rsi.filter(v => v !== null).pop();
+        if (lastRsi !== undefined) {
+            $('#rsiValue').text(lastRsi.toFixed(1));
+            let rsiBadge = '<span class="badge bg-secondary">Neutral</span>';
+            if (lastRsi < 30) rsiBadge = '<span class="badge bg-success">Oversold — possible BUY</span>';
+            else if (lastRsi > 70) rsiBadge = '<span class="badge bg-danger">Overbought — possible SELL</span>';
+            $('#rsiStatus').html(rsiBadge);
+        }
 
-            const layout = {
-                title: $('#stockSymbol option:selected').text() + ' Price Chart',
-                yaxis: { title: 'Price (₹)' },
-                xaxis: { title: 'Date' },
-                margin: { l: 50, r: 20, t: 40, b: 40 }
-            };
+        const lastSma20 = data.sma20.filter(v => v !== null).pop();
+        const lastSma50 = data.sma50.filter(v => v !== null).pop();
+        if (lastSma20) $('#sma20').text('₹' + lastSma20.toFixed(2));
+        if (lastSma50) $('#sma50').text('₹' + lastSma50.toFixed(2));
 
-            Plotly.newPlot('priceChart', [trace], layout);
+        if (lastSma20 && lastSma50) {
+            if (data.current_price > lastSma20 && lastSma20 > lastSma50) {
+                $('#trendStatus').html('<span class="badge bg-success">Golden Cross — Bullish</span>');
+            } else if (data.current_price < lastSma20 && lastSma20 < lastSma50) {
+                $('#trendStatus').html('<span class="badge bg-danger">Death Cross — Bearish</span>');
+            } else {
+                $('#trendStatus').html('<span class="badge bg-secondary">Mixed</span>');
+            }
+        }
 
-            // Create volume chart
-            const volumeTrace = {
-                x: data.dates,
-                y: data.volume,
-                type: 'bar',
-                name: 'Volume'
-            };
+        const symbolName = $('#stockSymbol option:selected').text();
 
-            const volumeLayout = {
-                title: 'Trading Volume',
-                yaxis: { title: 'Volume' },
-                xaxis: { title: 'Date' },
-                margin: { l: 50, r: 20, t: 40, b: 40 }
-            };
+        const candleTrace = {
+            x: data.dates,
+            close: data.close,
+            high: data.high,
+            low: data.low,
+            open: data.open,
+            type: 'candlestick',
+            name: symbolName,
+            increasing: { line: { color: '#26a69a' } },
+            decreasing: { line: { color: '#ef5350' } }
+        };
 
-            Plotly.newPlot('volumeChart', [volumeTrace], volumeLayout);
+        const sma20Trace = {
+            x: data.dates,
+            y: data.sma20,
+            type: 'scatter',
+            mode: 'lines',
+            name: 'SMA 20',
+            line: { color: '#ff9800', width: 1.5 }
+        };
 
-            // Update recent data table
-            const tableBody = $('#recentData tbody');
-            tableBody.empty();
+        const sma50Trace = {
+            x: data.dates,
+            y: data.sma50,
+            type: 'scatter',
+            mode: 'lines',
+            name: 'SMA 50',
+            line: { color: '#2196f3', width: 1.5 }
+        };
 
-            for (let i = data.dates.length - 10; i < data.dates.length; i++) {
-                tableBody.append(`
+        const layout = {
+            title: symbolName + ' — Price & Moving Averages',
+            yaxis: { title: 'Price (₹)', fixedrange: false },
+            xaxis: {
+                title: 'Date',
+                rangeslider: { visible: false },
+                type: 'category',
+                tickangle: -30
+            },
+            legend: { orientation: 'h', y: 1.08 },
+            margin: { l: 55, r: 20, t: 50, b: 60 },
+            paper_bgcolor: 'rgba(0,0,0,0)',
+            plot_bgcolor: 'rgba(0,0,0,0)'
+        };
+
+        Plotly.newPlot('priceChart', [candleTrace, sma20Trace, sma50Trace], layout, { responsive: true });
+
+        const volTrace = {
+            x: data.dates,
+            y: data.volume,
+            type: 'bar',
+            name: 'Volume',
+            marker: { color: '#7e57c2' }
+        };
+
+        Plotly.newPlot('volumeChart', [volTrace], {
+            margin: { l: 55, r: 20, t: 10, b: 40 },
+            yaxis: { title: 'Volume' },
+            xaxis: { type: 'category', tickangle: -30 },
+            paper_bgcolor: 'rgba(0,0,0,0)',
+            plot_bgcolor: 'rgba(0,0,0,0)'
+        }, { responsive: true });
+
+        const tbody = $('#recentData tbody');
+        tbody.empty();
+        const n = data.dates.length;
+        for (let i = Math.max(0, n - 10); i < n; i++) {
+            if (data.close[i] === null) continue;
+            tbody.append(`
                 <tr>
                     <td>${data.dates[i]}</td>
-                    <td>₹${data.open[i].toFixed(2)}</td>
-                    <td>₹${data.high[i].toFixed(2)}</td>
-                    <td>₹${data.low[i].toFixed(2)}</td>
-                    <td>₹${data.close[i].toFixed(2)}</td>
-                    <td>${data.volume[i].toLocaleString()}</td>
+                    <td>₹${(data.open[i] || 0).toFixed(2)}</td>
+                    <td>₹${(data.high[i] || 0).toFixed(2)}</td>
+                    <td>₹${(data.low[i] || 0).toFixed(2)}</td>
+                    <td><strong>₹${(data.close[i] || 0).toFixed(2)}</strong></td>
+                    <td>${(data.volume[i] || 0).toLocaleString('en-IN')}</td>
                 </tr>
             `);
-            }
-
-        } catch (error) {
-            console.error('Error updating dashboard:', error);
-            alert('Error updating dashboard. Please try again.');
         }
+    }
+
+    function showPredictionPanel(pred) {
+        $('#predictionPanel').show();
+        $('#predLastPrice').text('₹' + pred.last_actual_price.toFixed(2));
+        $('#predCachedAt').text('Cached at ' + pred.cached_at);
+
+        const finalEnsemble = pred.ensemble[pred.ensemble.length - 1];
+        const move = finalEnsemble - pred.last_actual_price;
+        const movePct = (move / pred.last_actual_price) * 100;
+        const moveCls = move >= 0 ? 'text-success' : 'text-danger';
+
+        $('#predFinalPrice').html(`<span class="${moveCls}">₹${finalEnsemble.toFixed(2)}</span>`);
+        $('#predMove').html(`<span class="${moveCls}">${move >= 0 ? '+' : ''}₹${move.toFixed(2)} (${movePct >= 0 ? '+' : ''}${movePct.toFixed(2)}%)</span>`);
+
+        const tbody = $('#predTableBody');
+        tbody.empty();
+        pred.future_dates.forEach(function (date, i) {
+            const ens = pred.ensemble[i];
+            const arima = pred.arima ? pred.arima[i] : '—';
+            const rf = pred.random_forest ? pred.random_forest[i] : '—';
+            const vs = ens - pred.last_actual_price;
+            const vsPct = (vs / pred.last_actual_price) * 100;
+            const vsCls = vs >= 0 ? 'text-success' : 'text-danger';
+
+            tbody.append(`
+                <tr>
+                    <td>${date}</td>
+                    <td>${arima !== '—' ? '₹' + arima.toFixed(2) : '—'}</td>
+                    <td>${rf !== '—' ? '₹' + rf.toFixed(2) : '—'}</td>
+                    <td class="fw-bold">₹${ens.toFixed(2)}</td>
+                    <td class="${vsCls}">${vs >= 0 ? '+' : ''}₹${vs.toFixed(2)} (${vsPct >= 0 ? '+' : ''}${vsPct.toFixed(2)}%)</td>
+                </tr>
+            `);
+        });
+    }
+
+    function overlayPrediction(pred) {
+        const bridgeDates = [pred.last_actual_date, ...pred.future_dates];
+        const bridgePrices = [pred.last_actual_price, ...pred.ensemble];
+
+        const predTrace = {
+            x: bridgeDates,
+            y: bridgePrices,
+            type: 'scatter',
+            mode: 'lines+markers',
+            name: 'ML Forecast (Ensemble)',
+            line: { color: '#ff6f00', width: 2.5, dash: 'dot' },
+            marker: { size: 6, symbol: 'diamond', color: '#ff6f00' }
+        };
+
+        Plotly.addTraces('priceChart', predTrace);
+
+        $('#chartLegend').html(`
+            <span class="me-3"><span style="border-bottom:2px solid #ff9800;display:inline-block;width:20px"></span> SMA20</span>
+            <span class="me-3"><span style="border-bottom:2px solid #2196f3;display:inline-block;width:20px"></span> SMA50</span>
+            <span><span style="border-bottom:2px dotted #ff6f00;display:inline-block;width:20px"></span> Forecast</span>
+        `);
+    }
+
+    function updateUrlParam(url, key, value) {
+        const parts = url.split('?');
+        const base = parts[0];
+        let params = parts.length > 1 ? parts[1].split('&') : [];
+        let found = false;
+        params = params.map(function (p) {
+            if (p.split('=')[0] === key) { found = true; return key + '=' + value; }
+            return p;
+        });
+        if (!found) params.push(key + '=' + value);
+        return base + (params.length ? '?' + params.join('&') : '');
     }
 </script>
 {% endblock %}

@@ -155,137 +155,69 @@
     <div class="col-md-8">
         <div class="card">
             <div class="card-header d-flex justify-content-between align-items-center">
-                <h5 class="mb-0"><i class="bi bi-activity"></i> Recent Activity</h5>
-                <a href="#" class="btn btn-sm btn-outline-secondary">View All</a>
+                <h5 class="mb-0"><i class="bi bi-activity"></i> Recent Trades</h5>
+                <a href="/performance" class="btn btn-sm btn-outline-secondary">View All</a>
             </div>
             <div class="card-body p-0">
                 <div class="list-group list-group-flush">
-                    <div class="list-group-item p-3">
-                        <div class="d-flex w-100 justify-content-between align-items-center">
-                            <div>
-                                <span class="badge bg-success me-2">BUY</span>
-                                <strong>Buy signal generated for RELIANCE</strong>
-                                <p class="text-muted mb-0 small">RSI oversold condition detected with high volume</p>
-                            </div>
-                            <div class="text-end">
-                                <span class="badge bg-light text-dark">10:15 AM</span>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="list-group-item p-3">
-                        <div class="d-flex w-100 justify-content-between align-items-center">
-                            <div>
-                                <span class="badge bg-success me-2">BUY</span>
-                                <strong>Executed buy order: 5 RELIANCE @ ₹2,450.75</strong>
-                                <p class="text-muted mb-0 small">Order executed successfully</p>
-                            </div>
-                            <div class="text-end">
-                                <span class="badge bg-light text-dark">10:30 AM</span>
+                    {% if stats.transactions %}
+                        {% for t in stats.transactions %}
+                        <div class="list-group-item p-3">
+                            <div class="d-flex w-100 justify-content-between align-items-center">
+                                <div>
+                                    <span class="badge {% if t.action == 'BUY' %}bg-success{% else %}bg-danger{% endif %} me-2">{{ t.action }}</span>
+                                    <strong>{{ t.action }} {{ t.shares }} shares of {{ t.symbol }} @ ₹{{ "{:,.2f}".format(t.price) }}</strong>
+                                    <p class="text-muted mb-0 small">Balance after: ₹{{ "{:,.2f}".format(t.balance_after) }}</p>
+                                </div>
+                                <div class="text-end">
+                                    <span class="badge bg-light text-dark">{{ t.timestamp[:16] }}</span>
+                                </div>
                             </div>
                         </div>
-                    </div>
-                    <div class="list-group-item p-3">
-                        <div class="d-flex w-100 justify-content-between align-items-center">
-                            <div>
-                                <span class="badge bg-info me-2">INFO</span>
-                                <strong>Portfolio rebalanced</strong>
-                                <p class="text-muted mb-0 small">Adjusted position sizes based on risk parameters</p>
-                            </div>
-                            <div class="text-end">
-                                <span class="badge bg-light text-dark">11:45 AM</span>
-                            </div>
+                        {% endfor %}
+                    {% else %}
+                        <div class="list-group-item p-4 text-center text-muted">
+                            <i class="bi bi-inbox fs-3 d-block mb-2"></i>
+                            No trades yet. Go to <a href="/trading">Trading</a> to place your first paper trade.
                         </div>
-                    </div>
-                    <div class="list-group-item p-3">
-                        <div class="d-flex w-100 justify-content-between align-items-center">
-                            <div>
-                                <span class="badge bg-danger me-2">SELL</span>
-                                <strong>Sell signal generated for TCS</strong>
-                                <p class="text-muted mb-0 small">RSI overbought condition detected</p>
-                            </div>
-                            <div class="text-end">
-                                <span class="badge bg-light text-dark">01:30 PM</span>
-                            </div>
-                        </div>
-                    </div>
+                    {% endif %}
                 </div>
             </div>
+            {% if stats.transactions %}
             <div class="card-footer text-center">
-                <a href="#" class="text-decoration-none">Load more activities</a>
+                <a href="/performance" class="text-decoration-none">View full trade history</a>
             </div>
+            {% endif %}
         </div>
     </div>
     <div class="col-md-4">
-        <div class="card mb-4">
-            <div class="card-header">
-                <h5 class="mb-0"><i class="bi bi-bell"></i> Alerts</h5>
-            </div>
-            <div class="card-body p-0">
-                <div class="list-group list-group-flush">
-                    <div class="list-group-item p-3">
-                        <div class="d-flex align-items-center">
-                            <div class="flex-shrink-0">
-                                <span class="badge rounded-pill bg-danger p-2"><i
-                                        class="bi bi-exclamation-triangle"></i></span>
-                            </div>
-                            <div class="flex-grow-1 ms-3">
-                                <h6 class="mb-0">INFY approaching stop loss</h6>
-                                <small class="text-muted">2 minutes ago</small>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="list-group-item p-3">
-                        <div class="d-flex align-items-center">
-                            <div class="flex-shrink-0">
-                                <span class="badge rounded-pill bg-success p-2"><i
-                                        class="bi bi-check-circle"></i></span>
-                            </div>
-                            <div class="flex-grow-1 ms-3">
-                                <h6 class="mb-0">TCS reached take profit target</h6>
-                                <small class="text-muted">15 minutes ago</small>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="list-group-item p-3">
-                        <div class="d-flex align-items-center">
-                            <div class="flex-shrink-0">
-                                <span class="badge rounded-pill bg-warning p-2"><i class="bi bi-info-circle"></i></span>
-                            </div>
-                            <div class="flex-grow-1 ms-3">
-                                <h6 class="mb-0">Market volatility increasing</h6>
-                                <small class="text-muted">1 hour ago</small>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
         <div class="card">
             <div class="card-header">
-                <h5 class="mb-0"><i class="bi bi-calendar-event"></i> Market Events</h5>
+                <h5 class="mb-0"><i class="bi bi-info-circle"></i> Account Info</h5>
             </div>
             <div class="card-body">
                 <div class="d-flex justify-content-between align-items-center mb-3">
                     <div>
-                        <h6 class="mb-0">RBI Policy Announcement</h6>
-                        <small class="text-muted">July 18, 2025</small>
+                        <h6 class="mb-0">Paper Trading Mode</h6>
+                        <small class="text-muted">Virtual money only</small>
                     </div>
-                    <span class="badge bg-primary">Tomorrow</span>
+                    <span class="badge bg-info">Demo</span>
                 </div>
                 <div class="d-flex justify-content-between align-items-center mb-3">
                     <div>
-                        <h6 class="mb-0">TCS Quarterly Results</h6>
-                        <small class="text-muted">July 20, 2025</small>
+                        <h6 class="mb-0">Open Positions</h6>
+                        <small class="text-muted">Active stock holdings</small>
                     </div>
-                    <span class="badge bg-secondary">3 days</span>
+                    <span class="badge bg-primary">{{ stats.active_positions }}</span>
                 </div>
                 <div class="d-flex justify-content-between align-items-center">
                     <div>
-                        <h6 class="mb-0">GDP Data Release</h6>
-                        <small class="text-muted">July 25, 2025</small>
+                        <h6 class="mb-0">Total P&L</h6>
+                        <small class="text-muted">vs. initial ₹1,00,000</small>
                     </div>
-                    <span class="badge bg-secondary">8 days</span>
+                    <span class="badge {% if stats.total_pnl >= 0 %}bg-success{% else %}bg-danger{% endif %}">
+                        ₹{{ "{:+,.0f}".format(stats.total_pnl) }}
+                    </span>
                 </div>
             </div>
         </div>
