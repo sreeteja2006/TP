@@ -1,11 +1,20 @@
+databases:
+  - name: tradepro-db
+    databaseName: tradepro
+    user: tradepro_user
+    plan: free
+
 services:
-  # A Flask web service
   - type: web
     name: trading-system
     env: python
     buildCommand: pip install -r requirements.txt
-    startCommand: gunicorn web_app:app
+    startCommand: gunicorn --workers 2 --timeout 120 web_app:app
     envVars:
       - key: PYTHON_VERSION
-        value: 3.9.0
+        value: 3.11.0
+      - key: DATABASE_URL
+        fromDatabase:
+          name: tradepro-db
+          property: connectionString
     healthCheckPath: /health

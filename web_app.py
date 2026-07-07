@@ -7,14 +7,44 @@ import json
 import os
 import psutil
 import time
+import psycopg2
+import psycopg2.extras
+from db import get_pg_conn
 
 app = Flask(__name__)
 
-os.makedirs('data', exist_ok=True)
-os.makedirs('data/processed', exist_ok=True)
-os.makedirs('data/raw', exist_ok=True)
-os.makedirs('data/results', exist_ok=True)
 os.makedirs('logs', exist_ok=True)
+
+
+def init_paper_account_db():
+    """Create the paper_account table if it does not exist and seed a default row."""
+    try:
+        conn = get_pg_conn()
+        cursor = conn.cursor()
+        cursor.execute('''
+        CREATE TABLE IF NOT EXISTS paper_account (
+            id INTEGER PRIMARY KEY DEFAULT 1,
+            initial_balance REAL NOT NULL DEFAULT 100000,
+            balance REAL NOT NULL DEFAULT 100000,
+            positions JSONB NOT NULL DEFAULT '{}',
+            transactions JSONB NOT NULL DEFAULT '[]',
+            CONSTRAINT single_row CHECK (id = 1)
+        )
+        ''')
+        # Insert the default row only if it doesn't exist yet
+        cursor.execute('''
+        INSERT INTO paper_account (id, initial_balance, balance, positions, transactions)
+        VALUES (1, 100000, 100000, '{}', '[]')
+        ON CONFLICT (id) DO NOTHING
+        ''')
+        conn.commit()
+        cursor.close()
+        conn.close()
+    except Exception as e:
+        print(f'[WARN] Could not init paper_account table: {e}')
+
+
+init_paper_account_db()
 
 _predict_cache = {}
 _CACHE_TTL = 3600
@@ -25,22 +55,53 @@ from apps.performance_dashboard import performance_bp
 app.register_blueprint(symbol_bp)
 app.register_blueprint(performance_bp)
 
-PAPER_ACCOUNT_FILE = 'data/paper_account.json'
-
 def load_paper_account():
-    if os.path.exists(PAPER_ACCOUNT_FILE):
-        with open(PAPER_ACCOUNT_FILE, 'r') as f:
-            return json.load(f)
-    return {
-        'initial_balance': 100000,
-        'balance': 100000,
-        'positions': {},
-        'transactions': []
-    }
+    """Load the paper account from PostgreSQL."""
+    try:
+        conn = get_pg_conn()
+        cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cursor.execute('SELECT * FROM paper_account WHERE id = 1')
+        row = cursor.fetchone()
+        cursor.close()
+        conn.close()
+        if row:
+            positions = row['positions'] if isinstance(row['positions'], dict) else json.loads(row['positions'] or '{}')
+            transactions = row['transactions'] if isinstance(row['transactions'], list) else json.loads(row['transactions'] or '[]')
+            return {
+                'initial_balance': row['initial_balance'],
+                'balance': row['balance'],
+                'positions': positions,
+                'transactions': transactions
+            }
+    except Exception as e:
+        print(f'[WARN] load_paper_account failed: {e}')
+    return {'initial_balance': 100000, 'balance': 100000, 'positions': {}, 'transactions': []}
+
 
 def save_paper_account(account):
-    with open(PAPER_ACCOUNT_FILE, 'w') as f:
-        json.dump(account, f, indent=2, default=str)
+    """Persist the paper account to PostgreSQL."""
+    try:
+        conn = get_pg_conn()
+        cursor = conn.cursor()
+        cursor.execute('''
+        INSERT INTO paper_account (id, initial_balance, balance, positions, transactions)
+        VALUES (1, %s, %s, %s, %s)
+        ON CONFLICT (id) DO UPDATE SET
+            initial_balance = EXCLUDED.initial_balance,
+            balance         = EXCLUDED.balance,
+            positions       = EXCLUDED.positions,
+            transactions    = EXCLUDED.transactions
+        ''', (
+            account['initial_balance'],
+            account['balance'],
+            json.dumps(account['positions'], default=str),
+            json.dumps(account['transactions'], default=str)
+        ))
+        conn.commit()
+        cursor.close()
+        conn.close()
+    except Exception as e:
+        print(f'[WARN] save_paper_account failed: {e}')
 
 def get_live_price(symbol):
     try:

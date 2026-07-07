@@ -2,26 +2,30 @@ from flask import Blueprint, render_template, jsonify, request
 import pandas as pd
 import json
 import os
-import sqlite3
+import psycopg2
+import psycopg2.extras
 import yfinance as yf
 from datetime import datetime, timedelta
+import sys
+
+# Add project root to path so we can import db.py
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from db import get_pg_conn
 
 performance_bp = Blueprint('performance', __name__, url_prefix='/performance')
 
-DB_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'data', 'trading.db')
-os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
 
 def get_db_connection():
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    return conn
+    """Return a psycopg2 connection."""
+    return get_pg_conn()
+
 
 def init_db():
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute('''
     CREATE TABLE IF NOT EXISTS positions (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        id SERIAL PRIMARY KEY,
         symbol TEXT NOT NULL,
         shares INTEGER NOT NULL,
         avg_price REAL NOT NULL,
@@ -31,7 +35,7 @@ def init_db():
     ''')
     cursor.execute('''
     CREATE TABLE IF NOT EXISTS transactions (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        id SERIAL PRIMARY KEY,
         date TEXT NOT NULL,
         time TEXT NOT NULL,
         action TEXT NOT NULL,
@@ -45,24 +49,40 @@ def init_db():
     ''')
     cursor.execute('''
     CREATE TABLE IF NOT EXISTS portfolio_history (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        id SERIAL PRIMARY KEY,
         date TEXT NOT NULL,
         portfolio_value REAL NOT NULL,
         timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )
     ''')
     conn.commit()
+    cursor.close()
     conn.close()
+
 
 init_db()
 
-PAPER_ACCOUNT_FILE = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'data', 'paper_account.json')
 
 def load_paper_account():
-    if os.path.exists(PAPER_ACCOUNT_FILE):
-        with open(PAPER_ACCOUNT_FILE, 'r') as f:
-            return json.load(f)
+    """Load the paper account from the paper_account table in PostgreSQL."""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cursor.execute('SELECT * FROM paper_account WHERE id = 1')
+        row = cursor.fetchone()
+        cursor.close()
+        conn.close()
+        if row:
+            return {
+                'initial_balance': row['initial_balance'],
+                'balance': row['balance'],
+                'positions': row['positions'] if isinstance(row['positions'], dict) else json.loads(row['positions'] or '{}'),
+                'transactions': row['transactions'] if isinstance(row['transactions'], list) else json.loads(row['transactions'] or '[]')
+            }
+    except Exception:
+        pass
     return {'initial_balance': 100000, 'balance': 100000, 'positions': {}, 'transactions': []}
+
 
 def get_live_price(symbol):
     try:
@@ -71,6 +91,7 @@ def get_live_price(symbol):
         return float(hist['Close'].iloc[-1]) if not hist.empty else None
     except Exception:
         return None
+
 
 def get_portfolio_summary():
     account = load_paper_account()
@@ -105,6 +126,7 @@ def get_portfolio_summary():
         'positions': positions
     }
 
+
 def get_transactions():
     account = load_paper_account()
     txns = []
@@ -121,13 +143,15 @@ def get_transactions():
         })
     return txns
 
+
 def get_performance_history():
     conn = get_db_connection()
-    cursor = conn.cursor()
+    cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     cursor.execute('SELECT * FROM portfolio_history ORDER BY date ASC')
     rows = cursor.fetchall()
     dates = [r['date'] for r in rows]
     values = [r['portfolio_value'] for r in rows]
+    cursor.close()
     conn.close()
 
     if not dates:
@@ -141,13 +165,12 @@ def get_performance_history():
 
     return {'dates': dates, 'values': values}
 
+
 @performance_bp.route('/')
 def performance_dashboard():
     summary = get_portfolio_summary()
     transactions = get_transactions()
     performance_data = get_performance_history()
-
-    wins = [t for t in transactions if t['Action'] == 'SELL']
 
     return render_template(
         'performance.html',
@@ -165,11 +188,13 @@ def performance_dashboard():
         is_demo=False
     )
 
+
 @performance_bp.route('/api/data')
 def get_performance_data():
     summary = get_portfolio_summary()
     summary['transactions'] = get_transactions()
     return jsonify(summary)
+
 
 @performance_bp.route('/api/add_transaction', methods=['POST'])
 def add_transaction():
@@ -181,13 +206,21 @@ def add_transaction():
         price = float(data.get('price', 0))
         shares = int(data.get('shares', 0))
         cursor.execute(
-            'INSERT INTO transactions (date, time, action, symbol, shares, price, total, balance_after) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-            (data.get('date', now.strftime('%Y-%m-%d')),
-             data.get('time', now.strftime('%H:%M:%S')),
-             data.get('action'), data.get('symbol'), shares, price,
-             price * shares, float(data.get('balance_after', 0)))
+            'INSERT INTO transactions (date, time, action, symbol, shares, price, total, balance_after) '
+            'VALUES (%s, %s, %s, %s, %s, %s, %s, %s)',
+            (
+                data.get('date', now.strftime('%Y-%m-%d')),
+                data.get('time', now.strftime('%H:%M:%S')),
+                data.get('action'),
+                data.get('symbol'),
+                shares,
+                price,
+                price * shares,
+                float(data.get('balance_after', 0))
+            )
         )
         conn.commit()
+        cursor.close()
         conn.close()
         return jsonify({'status': 'success', 'message': 'Transaction added'})
     except Exception as e:

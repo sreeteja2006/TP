@@ -2,27 +2,32 @@ from flask import Blueprint, render_template, jsonify, request
 import yfinance as yf
 import json
 import os
-import sqlite3
+import psycopg2
+import psycopg2.extras
 from datetime import datetime
 import requests
 import pandas as pd
+import sys
+
+# Add project root to path so we can import db.py
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from db import get_pg_conn
 
 symbol_bp = Blueprint('symbols', __name__, url_prefix='/symbols')
 
-DB_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'data', 'watchlist.db')
-os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
 
 def get_db_connection():
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
+    """Return a psycopg2 connection with RealDictCursor as default cursor factory."""
+    conn = get_pg_conn()
     return conn
+
 
 def init_db():
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute('''
     CREATE TABLE IF NOT EXISTS watchlist (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        id SERIAL PRIMARY KEY,
         symbol TEXT NOT NULL UNIQUE,
         name TEXT NOT NULL,
         market TEXT NOT NULL,
@@ -30,13 +35,17 @@ def init_db():
     )
     ''')
     conn.commit()
+    cursor.close()
     conn.close()
 
+
 init_db()
+
 
 @symbol_bp.route('/')
 def manage_symbols():
     return render_template('manage_symbols.html')
+
 
 @symbol_bp.route('/api/search_symbols')
 def search_symbols():
@@ -96,6 +105,7 @@ def search_symbols():
     except Exception as e:
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
+
 def _get_quick_price(symbol):
     try:
         hist = yf.Ticker(symbol).history(period='2d')
@@ -106,6 +116,7 @@ def _get_quick_price(symbol):
     except Exception:
         pass
     return None, None
+
 
 def _market_type_from_quote(quote):
     qt = quote.get('quoteType', '')
@@ -118,6 +129,7 @@ def _market_type_from_quote(quote):
     if ex in ('MCX', 'NYMEX', 'COMEX'): return 'Commodities'
     return 'Stocks'
 
+
 def _market_type_from_info(info):
     qt = info.get('quoteType', '')
     if qt == 'EQUITY': return 'Stocks'
@@ -126,13 +138,15 @@ def _market_type_from_info(info):
     if qt in ('CURRENCY', 'CRYPTOCURRENCY'): return 'Forex'
     return 'Stocks'
 
+
 @symbol_bp.route('/api/watchlist')
 def get_watchlist():
     try:
         conn = get_db_connection()
-        cursor = conn.cursor()
+        cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         cursor.execute('SELECT * FROM watchlist ORDER BY added_date DESC')
         rows = cursor.fetchall()
+        cursor.close()
         conn.close()
         watchlist = []
         for row in rows:
@@ -148,6 +162,7 @@ def get_watchlist():
     except Exception as e:
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
+
 @symbol_bp.route('/api/watchlist/add', methods=['POST'])
 def add_to_watchlist():
     try:
@@ -156,19 +171,24 @@ def add_to_watchlist():
             return jsonify({'status': 'error', 'message': 'Missing required fields'}), 400
 
         conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute('SELECT id FROM watchlist WHERE symbol = ?', (data['symbol'],))
+        cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cursor.execute('SELECT id FROM watchlist WHERE symbol = %s', (data['symbol'],))
         if cursor.fetchone():
+            cursor.close()
             conn.close()
             return jsonify({'status': 'error', 'message': 'Symbol already in watchlist'}), 400
 
-        cursor.execute('INSERT INTO watchlist (symbol, name, market) VALUES (?, ?, ?)',
-                       (data['symbol'], data['name'], data['market']))
+        cursor.execute(
+            'INSERT INTO watchlist (symbol, name, market) VALUES (%s, %s, %s)',
+            (data['symbol'], data['name'], data['market'])
+        )
         conn.commit()
+        cursor.close()
         conn.close()
         return jsonify({'status': 'success', 'message': f'{data["symbol"]} added to watchlist'})
     except Exception as e:
         return jsonify({'status': 'error', 'message': str(e)}), 500
+
 
 @symbol_bp.route('/api/watchlist/remove', methods=['POST'])
 def remove_from_watchlist():
@@ -179,20 +199,23 @@ def remove_from_watchlist():
 
         conn = get_db_connection()
         cursor = conn.cursor()
-        cursor.execute('DELETE FROM watchlist WHERE symbol = ?', (data['symbol'],))
+        cursor.execute('DELETE FROM watchlist WHERE symbol = %s', (data['symbol'],))
         conn.commit()
+        cursor.close()
         conn.close()
         return jsonify({'status': 'success', 'message': f'{data["symbol"]} removed'})
     except Exception as e:
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
+
 @symbol_bp.route('/api/watchlist/save', methods=['POST'])
 def save_watchlist():
     try:
         conn = get_db_connection()
-        cursor = conn.cursor()
+        cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         cursor.execute('SELECT symbol FROM watchlist')
         symbols = [r['symbol'] for r in cursor.fetchall()]
+        cursor.close()
         conn.close()
 
         config_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'config', 'trading_config.json')
@@ -200,15 +223,24 @@ def save_watchlist():
             with open(config_path, 'r') as f:
                 config = json.load(f)
         else:
-            config = {'max_positions': 8, 'position_size_pct': 0.1, 'stop_loss_pct': 0.05, 'take_profit_pct': 0.15, 'daily_loss_limit': 0.02, 'max_trades_per_day': 10}
+            config = {
+                'max_positions': 8,
+                'position_size_pct': 0.1,
+                'stop_loss_pct': 0.05,
+                'take_profit_pct': 0.15,
+                'daily_loss_limit': 0.02,
+                'max_trades_per_day': 10
+            }
 
         config['symbols'] = symbols
+        os.makedirs(os.path.dirname(config_path), exist_ok=True)
         with open(config_path, 'w') as f:
             json.dump(config, f, indent=2)
 
         return jsonify({'status': 'success', 'message': 'Watchlist saved to config'})
     except Exception as e:
         return jsonify({'status': 'error', 'message': str(e)}), 500
+
 
 @symbol_bp.route('/api/download_stock_lists', methods=['POST'])
 def download_stock_lists():
