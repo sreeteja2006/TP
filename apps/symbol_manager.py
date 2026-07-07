@@ -38,8 +38,11 @@ def init_db():
     cursor.close()
     conn.close()
 
+try:
+    init_db()
+except Exception as e:
+    print(f'[WARN] symbol_manager init_db failed (DATABASE_URL may not be set yet): {e}')
 
-init_db()
 
 
 @symbol_bp.route('/')

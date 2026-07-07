@@ -59,8 +59,11 @@ def init_db():
     cursor.close()
     conn.close()
 
+try:
+    init_db()
+except Exception as e:
+    print(f'[WARN] performance_dashboard init_db failed (DATABASE_URL may not be set yet): {e}')
 
-init_db()
 
 
 def load_paper_account():
